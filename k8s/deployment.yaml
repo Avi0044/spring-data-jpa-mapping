@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: spring-data-jpa-mapping
+
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: spring-data-jpa-mapping
+
+  template:
+    metadata:
+      labels:
+        app: spring-data-jpa-mapping
+
+    spec:
+      containers:
+        - name: spring-data-jpa-mapping
+
+          image: spring-data-jpa-mapping:1.0
+
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - containerPort: 8899
