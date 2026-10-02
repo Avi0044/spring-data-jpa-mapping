@@ -1,67 +1,64 @@
 pipeline {
-
     agent any
-
-    options {
-        timestamps()
-        disableConcurrentBuilds()
-        buildDiscarder(
-            logRotator(
-                numToKeepStr: '10'
-            )
-        )
-    }
 
     stages {
 
-        stage('Build & Test') {
+        stage('Checkout') {
             steps {
-                sh 'chmod +x mvnw'
-                sh './mvnw -B clean test'
+                git branch: 'main',
+                    url: 'https://github.com/Avi0044/spring-data-jpa-mapping.git'
             }
         }
 
-        stage('Package') {
+        stage('Build') {
             steps {
-                sh './mvnw -B package -DskipTests'
+                sh '''
+                    chmod +x mvnw
+                    export MAVEN_OPTS="-Xmx384m -XX:MaxMetaspaceSize=128m"
+                    ./mvnw clean package -DskipTests
+                '''
             }
         }
 
-        stage('Docker Build') {
+        stage('Check JAR') {
             steps {
-                sh 'docker compose --env-file /opt/spring-data-jpa-mapping/.env build app'
+                sh '''
+                    ls -lh target/spring-data-jpa-mapping-0.0.1-SNAPSHOT.jar
+                '''
             }
         }
 
         stage('Deploy') {
             steps {
                 sh '''
-                    docker compose \
-                    --env-file /opt/spring-data-jpa-mapping/.env \
-                    up -d app
+                    scp \
+                    -i /var/lib/jenkins/.ssh/id_ed25519 \
+                    -o IdentitiesOnly=yes \
+                    -o StrictHostKeyChecking=accept-new \
+                    target/spring-data-jpa-mapping-0.0.1-SNAPSHOT.jar \
+                    ubuntu@13.211.200.230:/tmp/mapping-service.jar
+
+                    ssh \
+                    -i /var/lib/jenkins/.ssh/id_ed25519 \
+                    -o IdentitiesOnly=yes \
+                    -o StrictHostKeyChecking=accept-new \
+                    ubuntu@13.211.200.230 \
+                    'sudo /usr/local/bin/deploy-mapping.sh'
                 '''
             }
         }
 
-        stage('Smoke Test') {
+        stage('Health Check') {
             steps {
                 sh '''
-                    sleep 10
-                    curl -f http://127.0.0.1:8899/api/v1/user/
+                    ssh \
+                    -i /var/lib/jenkins/.ssh/id_ed25519 \
+                    -o IdentitiesOnly=yes \
+                    -o StrictHostKeyChecking=accept-new \
+                    ubuntu@13.211.200.230 \
+                    'curl -fsS http://127.0.0.1:8899/swagger-ui/index.html >/dev/null'
                 '''
             }
-        }
-    }
-
-    post {
-
-        success {
-            echo 'Deployment successful!'
-        }
-
-        failure {
-            sh 'docker compose --env-file /opt/spring-data-jpa-mapping/.env ps || true'
-            sh 'docker compose --env-file /opt/spring-data-jpa-mapping/.env logs --tail=100 app || true'
         }
     }
 }
